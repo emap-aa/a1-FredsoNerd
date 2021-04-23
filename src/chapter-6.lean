@@ -66,7 +66,7 @@ example {a : Type} {xs ys zs : list a} : (xs ++ ys) ++ zs = xs ++ (ys ++ zs) :=
 begin
  induction xs with b hb,
  apply list.append.equations._eqn_1,
- sorry
+ simp
 end
 
 def map {a b : Type} : (a → b) → list a → list b
@@ -140,16 +140,39 @@ end
 
 -- #print list.cons_append
 
-example {a b : Type} (f : a → b) [inhabited a] [inhabited b] : 
+-- example {a b : Type} (f : a → b) [inhabited a] [inhabited b] : 
+--   list.head ∘ map f = f ∘ list.head :=
+-- begin
+--  unfold comp,
+--  funext, 
+--  induction x with b bs hi, 
+--  rw list.head,
+--  rw map, rw list.head,
+--  sorry -- aparece que nao podemos provar sem saber mais sobre F
+-- end
+
+-- adicionando informação sobre F, temos
+example {a b : Type}
+  (f : a → b)
+  [inhabited a]
+  [inhabited b]
+  -- we had to add this new hypothesis
+  (h : default b = f (default a)) :
   list.head ∘ map f = f ∘ list.head :=
-begin
- unfold comp,
- funext, 
- induction x with b bs hi, 
- rw list.head,
- rw map, rw list.head,
- sorry -- aparece que nao podemos provar sem saber mais sobre F
-end
+  begin
+    unfold comp,
+    funext, 
+    induction x with b bs hi,
+    -- case list.nil
+    rw list.head,
+    rw map,
+    rw list.head,
+    rw h,
+    -- case list.cons
+    rw list.head,
+    rw map,
+    rw list.head,
+  end
 
 
 end Lists
@@ -184,26 +207,8 @@ def filter {a : Type} : (a → bool) → list a → list a
 #reduce sum₁ [0,1,2,3]
 #reduce foldr (λ x y, x + y) 0 [1,2,3]
 #reduce map (λ x : ℕ, x + 1) [1,2,3]
-#reduce reverse [1,2,3]
+#reduce Lists.reverse [1,2,3]
 #reduce filter (λ x, if x < 4 then tt else ff) [1,2,3,4]
-
-
-theorem sum'_eq_sum'' {xs : list ℕ} : sum₁ xs = sum₂ xs := sorry
-
-
-theorem sum_of_append {xs ys : list ℕ} : sum₁ (xs ++ ys) = sum₁ xs + sum₁ ys := sorry
-
-
-theorem concat_of_apend { a : Type} {xss yss : list (list a)} : 
-  concat (xss ++ yss) = concat xss ++ concat yss := sorry
-
-
-theorem foldr_law {a b : Type} (f : a → b → b) (g : b → b → b) (e : b) (xs ys : list a) 
-  (h1 : ∀ x, g e x = x) 
-  (h2 : ∀ x y z, f x (g y z) = g (f x y) z) : 
-  foldr f e (xs ++ ys) = g (foldr f e xs) (foldr f e ys) := sorry
-
-end Foldr
 
 
 namespace Fusion
@@ -223,29 +228,68 @@ def concat {a : Type} := foldr (++) ([] : list a)
 def double (n : ℕ) := n + n
 
 
-theorem funsion_law {a b : Type} (f : a → b) (g : b → a → a) (h : b → b → b) 
+theorem fusion_law {a b : Type}
+  (f : a → b)
+  (g : b → a → a)
+  (h : b → b → b) 
   (xa : a) (xb : b)
   (h1 : f xa = xb) 
   (h2 : ∀ x y, f (g x y) = h x (f y)) : 
   f ∘ foldr g xa = foldr h xb := 
-begin
- funext xs,
- induction xs with d hd, 
- rw foldr, rw comp, dsimp, rw foldr, exact h1, 
- sorry
-end
+  begin
+    funext xs,
+    induction xs with x l ih,
+    -- case list.nil
+    rw foldr,
+    rw comp,
+    dsimp,
+    rw foldr,
+    exact h1, 
+    -- case list.cons
+    simp,
+    simp at ih,
+    unfold foldr,
+    rw ← ih,
+    rw h2 _ _,
+  end
 
 
-lemma funsion1 {α β : Type} (a : α) 
- (f :  β → α → α) (h : α → α → α) (g : α → β) 
- (h1 : foldr f a [] = a)
- (h2 : ∀ x y, foldr f a (((::) ∘ g) x y) = h x (foldr f a y))
- : foldr f a ∘ map₁ g = foldr h a := sorry
+lemma funsion1 {α β : Type}
+  (a : α) 
+  (f :  β → α → α) (h : α → α → α) (g : α → β) 
+  (h1 : foldr f a [] = a)
+  (h2 : ∀ x y, foldr f a (((::) ∘ g) x y) = h x (foldr f a y))
+  : foldr f a ∘ map₁ g = foldr h a :=
+  begin
+    -- (λ (_x : β) (_y : list β), _x :: _y) ∘ g
+    exact fusion_law (foldr f a) (_) h [] a h1 h2,
+  end
 
+example {a : Type} (xs : list ℕ) : (double ∘ sum₂) xs = foldr ((+) ∘ double) 0 xs :=
+  begin
+    induction xs with b l ih,
+    -- case list.nil
+    refl,
+    -- case list.cons
+    unfold sum₂,
+    unfold foldr,
+    simp,
+    unfold foldr,
+    unfold double,
+    sorry
+  end
 
-example {a : Type} (xs : list ℕ) : (double ∘ sum₂) xs = foldr ((+) ∘ double) 0 xs := sorry
-
-example {a : Type} (xs : list a) : (length ∘ concat) = foldr ((+) ∘ length) 0 := sorry
+example {a : Type} (xs : list a) : (length ∘ concat) = foldr ((+) ∘ length) 0 :=
+  begin
+    funext xs,
+    induction xs with b l ih,
+    -- case list.nil
+    refl,
+    -- case list.cons
+    simp,
+    unfold foldr,
+    
+  end
 
 
 end Fusion
@@ -270,10 +314,88 @@ def reverse₂ {a : Type} := foldl (flip (::)) ([] : list a)
 #reduce reverse₁ [1,2,3,4]
 
 
-example : ∀ xs : list ℕ, reverse₁ xs = reverse₂ xs := sorry
+example : ∀ xs : list ℕ, reverse₁ xs = reverse₂ xs :=
+  begin
+    intro xs,
+    induction xs with b l ih,
+    -- case list.nil
+    refl,
+    -- case list.cons
+    unfold reverse₁,
+    unfold reverse₂,
+    simp,
+    unfold foldl,
+    unfold flip,
+    
+  end
 
 end Foldl
 
+theorem sum'_eq_sum'' {xs : list ℕ} : sum₁ xs = Fusion.sum₂ xs :=
+  begin
+    induction xs with b l ih,
+    -- case list.nil
+    refl,
+    -- case list.cons
+    have h' : sum₁ (b :: l) = b + sum₁ l, by refl,
+    have h'' : Fusion.sum₂ (b :: l) = b + Fusion.sum₂ l, by refl,
+    rw h',
+    rw h'',
+    rw ih,
+  end
+
+
+theorem sum_of_append {xs ys : list ℕ} : sum₁ (xs ++ ys) = sum₁ xs + sum₁ ys :=
+  begin
+    induction xs with b l ih,
+    -- case list.nil
+    simp,
+    refl,
+    -- case list.cons
+    simp,
+    unfold sum₁,
+    rw ih,
+    rw nat.add_assoc,
+  end
+
+
+theorem concat_of_apend { a : Type} {xss yss : list (list a)} : 
+  concat (xss ++ yss) = concat xss ++ concat yss := 
+  begin
+    induction xss with b l ih,
+    -- case list.nil
+    simp,
+    refl,
+    -- case list.cons
+    simp,
+    unfold concat,
+    simp,
+    rw ih,
+  end
+
+
+theorem foldr_law {a b : Type}
+  (f : a → b → b)
+  (g : b → b → b)
+  (e : b)
+  (xs ys : list a) 
+  (h1 : ∀ x, g e x = x) 
+  (h2 : ∀ x y z, f x (g y z) = g (f x y) z) : 
+  foldr f e (xs ++ ys) = g (foldr f e xs) (foldr f e ys) :=
+  begin
+    induction xs with x l ih,
+    -- case list.nil
+    simp,
+    unfold foldr,
+    rw h1 (foldr f e ys),
+    -- case list.cons
+    simp,
+    unfold foldr,
+    rw ← h2 x _ _,
+    rw ih,
+  end
+
+end Foldr
 
 namespace ExercicioF
 
